@@ -23,6 +23,8 @@ log = logging.getLogger(__name__)
 import socket    # Basic TCP/IP communication on the internet
 import _thread   # Response computation runs concurrently with main program
 
+import os
+DOCROOT = None
 
 def listen(portnum):
     """
@@ -91,8 +93,15 @@ def respond(sock):
 
     parts = request.split()
     if len(parts) > 1 and parts[0] == "GET":
-        transmit(STATUS_OK, sock)
-        transmit(CAT, sock)
+        url = parts[1][1:]
+        if url.startswith("~") or url.startswith("/") or url.startswith("..") or "//" in url:
+            transmit(STATUS_FORBIDDEN, sock)
+            transmit("<h1>Forbidden</h1>", sock)
+        elif url.endswith(".html") or url.endswith(".css"):
+            return_page(url, sock)
+        else:
+            transmit(STATUS_OK, sock)
+            transmit(CAT, sock)
     else:
         log.info("Unhandled request: {}".format(request))
         transmit(STATUS_NOT_IMPLEMENTED, sock)
@@ -102,6 +111,16 @@ def respond(sock):
     sock.close()
     return
 
+def return_page(url: str, sock):
+    path = os.path.join(DOCROOT, url)
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            content = f.read()
+            transmit(STATUS_OK, sock)
+            transmit(content, sock)
+    else:
+        transmit(STATUS_NOT_FOUND, sock)
+        transmit("<h1>Page not found</h1>", sock)
 
 def transmit(msg, sock):
     """It might take several sends to get the whole message out"""
@@ -138,6 +157,8 @@ def get_options():
 def main():
     options = get_options()
     port = options.PORT
+    global DOCROOT
+    DOCROOT = options.DOCROOT
     if options.DEBUG:
         log.setLevel(logging.DEBUG)
     sock = listen(port)
